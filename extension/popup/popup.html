@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Snap Vanish</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <img src="../icons/icon-48.png" alt="" width="28" height="28">
+      <div>
+        <h1>Snap Vanish</h1>
+        <p class="tag">Snap to turn to dust</p>
+      </div>
+    </div>
+    <label class="switch" title="Turn Snap Vanish on or off">
+      <input type="checkbox" id="enabled">
+      <span class="slider"></span>
+    </label>
+  </header>
+
+  <section class="status" id="status">
+    <span class="dot"></span>
+    <span id="statusText">Checking this tab…</span>
+  </section>
+
+  <button id="snapNow" class="snap" disabled>
+    <span class="snap-icon">✦</span>
+    <span id="snapLabel">Snap now</span>
+  </button>
+  <p class="shortcut">Shortcut: <kbd id="shortcut">not set</kbd> · <a href="#" id="editShortcut">change</a></p>
+
+  <section class="card">
+    <div class="row">
+      <label for="sensitivity">Snap sensitivity</label>
+      <output id="sensitivityOut"></output>
+    </div>
+    <input type="range" id="sensitivity" min="1" max="10" step="1">
+    <div class="hint"><span>Strict</span><span>Loose</span></div>
+
+    <div class="row">
+      <label for="dustSeconds">Dust duration</label>
+      <output id="dustSecondsOut"></output>
+    </div>
+    <input type="range" id="dustSeconds" min="1" max="6" step="0.5">
+
+    <div class="row"><span class="label">Dust direction</span></div>
+    <div class="segmented" id="direction" role="radiogroup">
+      <button data-dir="left" role="radio" title="Blow left">←</button>
+      <button data-dir="up" role="radio" title="Blow up">↑</button>
+      <button data-dir="right" role="radio" title="Blow right">→</button>
+      <button data-dir="random" role="radio" title="Random wind">≋</button>
+    </div>
+  </section>
+
+  <section class="card toggles">
+    <label class="check">
+      <input type="checkbox" id="confirmWithSound">
+      <span>Confirm with snap sound<small>Hand tracking spots the snap, the mic click confirms it</small></span>
+    </label>
+    <label class="check">
+      <input type="checkbox" id="muteMic">
+      <span>Mute mic while vanished</span>
+    </label>
+  </section>
+
+  <footer>🔒 Runs fully on this computer. No video leaves your browser.</footer>
+  <script src="popup.js"></script>
+</body>
+</html>
