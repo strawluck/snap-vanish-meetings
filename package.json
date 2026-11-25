@@ -7,7 +7,7 @@
   "scripts": {
     "build": "node build.mjs",
     "watch": "node build.mjs --watch",
-    "test": "node test/snap-gesture.test.mjs",
+    "test": "node test/snap-gesture.test.mjs && node test/snap-sound.test.mjs",
     "icons": "python3 tools/make-icons.py",
     "package": "node tools/package.mjs"
   },

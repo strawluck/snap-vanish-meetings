@@ -33,3 +33,14 @@ const typing = [0, 1, 2, 3, 4, 5].map((i) =>
 );
 assert.equal(run(typing), false, 'typing-like motion: no fire');
 console.log('snap-gesture: all checks passed');
+
+// Ready position (used with the snap sound): thumb + middle together, hand raised.
+{
+  const g = new SnapGesture();
+  g.update(loaded, 1000, 1);
+  assert.equal(g.readyAt, 1000, 'loaded hand marks ready');
+  const g2 = new SnapGesture();
+  g2.update(typing[0], 1000, 1);
+  assert.equal(g2.readyAt, -Infinity, 'typing hand is not ready');
+  console.log('snap-gesture: ready checks passed');
+}

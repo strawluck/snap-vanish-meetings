@@ -88,3 +88,37 @@ input[type=range] { width: 100%; accent-color: var(--gold); margin: 6px 0 2px; }
 .check small { display: block; color: var(--muted); font-size: 11px; }
 
 footer { color: var(--muted); font-size: 11px; text-align: center; }
+
+.room .note { margin: 6px 0 8px; color: var(--muted); font-size: 11.5px; }
+.room-actions { display: flex; align-items: center; gap: 10px; }
+.ghost {
+  padding: 7px 12px; border-radius: 8px; border: 1px solid var(--gold);
+  background: transparent; color: var(--gold); font: 600 12.5px/1 inherit; cursor: pointer;
+}
+.ghost:disabled { opacity: .4; cursor: not-allowed; }
+.link { border: 0; background: none; color: var(--muted); font-size: 11.5px; text-decoration: underline; cursor: pointer; padding: 0; }
+.badge { font-size: 11px; color: var(--gold); }
+
+.check-line { display: flex; gap: 6px; justify-content: center; margin-top: 8px; }
+.pill {
+  padding: 3px 8px; border-radius: 999px; font-size: 11px;
+  background: var(--panel); color: var(--muted); border: 1px solid var(--line);
+}
+.pill.on { color: var(--ok); border-color: #2f5a3d; }
+.pill.warm { color: var(--gold); border-color: #5a4a2a; }
+
+.room { margin-bottom: 10px; }
+.room-photo { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
+.room-photo img {
+  width: 128px; height: 72px; object-fit: cover; border-radius: 7px;
+  border: 1px solid var(--line); background: #000;
+}
+.room-side { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.capture {
+  width: 100%; margin-top: 8px; padding: 9px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--gold); background: #2a2216; color: var(--gold); font: 600 13px/1 inherit;
+}
+.capture:disabled, .ghost:disabled { opacity: .4; cursor: not-allowed; }
+.room .note { margin: 8px 0 0; }
+
+[hidden] { display: none !important; }

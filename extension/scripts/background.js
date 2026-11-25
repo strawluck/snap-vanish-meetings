@@ -16,6 +16,8 @@
   var MSG = Object.freeze({
     TOGGLE: "snapvanish/toggle",
     STATUS: "snapvanish/status",
+    ROOM_PHOTO: "snapvanish/room-photo",
+    ROOM_PHOTO_CLEAR: "snapvanish/room-photo-clear",
     INPAINT: "snapvanish/inpaint",
     WAKE_INPAINTER: "snapvanish/wake-inpainter"
   });

@@ -41,6 +41,8 @@
   var MSG = Object.freeze({
     TOGGLE: "snapvanish/toggle",
     STATUS: "snapvanish/status",
+    ROOM_PHOTO: "snapvanish/room-photo",
+    ROOM_PHOTO_CLEAR: "snapvanish/room-photo-clear",
     INPAINT: "snapvanish/inpaint",
     WAKE_INPAINTER: "snapvanish/wake-inpainter"
   });
@@ -12759,7 +12761,11 @@
     const p2 = points.map((q2) => ({ x: q2.x * aspect, y: q2.y }));
     const size = dist(p2[L2.WRIST], p2[L2.MIDDLE_MCP]) || 1e-3;
     const folded = (tip, mcp) => dist(p2[tip], p2[L2.WRIST]) < dist(p2[mcp], p2[L2.WRIST]) * 1.35;
+    let top = 1;
+    for (const q2 of points) top = Math.min(top, q2.y);
     return {
+      raised: points[L2.WRIST].y < 0.97 && top < 0.85,
+      // not just resting at the bottom edge
       gap: dist(p2[L2.THUMB_TIP], p2[L2.MIDDLE_TIP]) / size,
       reach: dist(p2[L2.MIDDLE_TIP], p2[L2.WRIST]) / size,
       tip: p2[L2.MIDDLE_TIP],
@@ -12770,6 +12776,8 @@
   var SnapGesture = class {
     constructor() {
       this.tracks = /* @__PURE__ */ new Map();
+      this.readyAt = -Infinity;
+      this.handAt = -Infinity;
       this.setSensitivity(5);
     }
     setSensitivity(level) {
@@ -12779,6 +12787,7 @@
       this.reachDrop = 0.93 - 0.1 * s2;
       this.windowMs = 140 + 120 * s2;
       this.minCurled = s2 > 0.75 ? 0 : 1;
+      this.readyGap = 0.38 + 0.3 * s2;
     }
     /**
      * @param {Array<{landmarks: Array, handedness: string}>} hands
@@ -12792,6 +12801,8 @@
       for (const { landmarks, handedness } of hands) {
         seen.add(handedness);
         const h2 = describeHand(landmarks, aspect);
+        this.handAt = now;
+        if (h2.raised && h2.gap < this.readyGap && h2.curled >= this.minCurled) this.readyAt = now;
         const track = this.tracks.get(handedness) ?? { loaded: null, loadedAt: -Infinity };
         if (h2.gap < this.loadGap && h2.curled >= this.minCurled) {
           track.loaded = h2;
@@ -12804,6 +12815,7 @@
           if (opened && slammed && travel > 0.35) {
             fired = true;
             track.loaded = null;
+            this.readyAt = now;
           }
         } else if (now - track.loadedAt > this.windowMs) {
           track.loaded = null;
@@ -12843,18 +12855,23 @@
       this.learnedSinceAi = 0;
       this.holeShare = 1;
     }
-    /** Blend the current frame into memory where no person is present. */
-    learn(frame, personMask) {
+    /**
+     * Blend the current frame into memory, but only where `safeMask` is opaque.
+     * The mask is hard-edged and only covers spots that have been clearly
+     * empty for a while, so blurry arms and soft edges never leak in.
+     */
+    learn(frame, safeMask) {
       const { cutoutCtx: c2, memoryCtx: m2, w: w2, h: h2 } = this;
       c2.globalCompositeOperation = "copy";
       c2.drawImage(frame, 0, 0, w2, h2);
-      c2.globalCompositeOperation = "destination-out";
-      c2.drawImage(personMask, 0, 0, w2, h2);
+      c2.globalCompositeOperation = "destination-in";
+      c2.imageSmoothingQuality = "high";
+      c2.drawImage(safeMask, 0, 0, w2, h2);
       c2.globalCompositeOperation = "source-over";
       m2.globalCompositeOperation = "destination-over";
       m2.drawImage(this.cutout, 0, 0);
       m2.globalCompositeOperation = "source-over";
-      m2.globalAlpha = 0.12;
+      m2.globalAlpha = 0.1;
       m2.drawImage(this.cutout, 0, 0);
       m2.globalAlpha = 1;
       this.learnedSinceAi++;
@@ -13158,9 +13175,37 @@
     }
   };
 
+  // src/content/room-photo.js
+  var KEY = "roomPhoto";
+  async function saveRoomPhoto(canvas2) {
+    try {
+      if (!canvas2) return await chrome.storage.local.remove(KEY);
+      await chrome.storage.local.set({
+        [KEY]: { w: canvas2.width, h: canvas2.height, src: canvas2.toDataURL("image/jpeg", 0.92) }
+      });
+    } catch (err) {
+      console.warn("[Snap Vanish] could not save room photo", err);
+    }
+  }
+  async function loadRoomPhoto(width, height) {
+    try {
+      const { [KEY]: saved } = await chrome.storage.local.get(KEY);
+      if (!saved?.src) return null;
+      if (Math.abs(saved.w / saved.h - width / height) > 0.02) return null;
+      const img = new Image();
+      img.src = saved.src;
+      await img.decode();
+      return img;
+    } catch {
+      return null;
+    }
+  }
+
   // src/content/vanishing-act.js
   var MASK_W = 160;
   var COOLDOWN_MS = 1600;
+  var CLEAR_FRAMES = 6;
+  var PHOTO_COUNTDOWN_S = 5;
   var makeCanvas = (w2, h2) => {
     const c2 = document.createElement("canvas");
     c2.width = w2;
@@ -13181,10 +13226,13 @@
       this.modelError = null;
       this.gesture = new SnapGesture();
       this.gesture.setSensitivity(prefs2.sensitivity);
-      this.pendingSnapAt = 0;
+      this.clickCursor = performance.now();
       this.lastToggle = 0;
       this.frameNo = 0;
       this.closed = false;
+      this.handBoxes = [];
+      this.roomPhoto = null;
+      this.photoJob = null;
       loadVisionModels().then((m2) => this.models = m2).catch((err) => {
         this.modelError = err;
         console.error("[Snap Vanish] could not load vision models", err);
@@ -13238,10 +13286,15 @@
       const mh2 = Math.round(MASK_W * h2 / w2);
       this.maskW = MASK_W;
       this.maskH = mh2;
-      this.coverage = new Uint8ClampedArray(MASK_W * mh2);
-      this.grown = new Uint8ClampedArray(MASK_W * mh2);
+      const n2 = MASK_W * mh2;
+      this.coverage = new Uint8ClampedArray(n2);
+      this.grown = new Uint8ClampedArray(n2);
+      this.held = new Float32Array(n2);
+      this.clearRun = new Uint8Array(n2);
       this.maskImg = new ImageData(MASK_W, mh2);
+      this.safeImg = new ImageData(MASK_W, mh2);
       this.maskSmall = makeCanvas(MASK_W, mh2);
+      this.safeMask = makeCanvas(MASK_W, mh2);
       this.softMask = makeCanvas(ROOM_W, rh2);
       this.softCtx = this.softMask.getContext("2d");
       this.patch = makeCanvas(ROOM_W, rh2);
@@ -13250,6 +13303,16 @@
       this.dustCtx = this.dustLayer.getContext("2d");
       this.room = new EmptyRoom(ROOM_W, rh2);
       this.haveMask = false;
+      this.loadSavedPhoto(w2, h2);
+    }
+    async loadSavedPhoto(w2, h2) {
+      const img = await loadRoomPhoto(w2, h2);
+      if (img && this.frameW === w2 && this.frameH === h2) {
+        const c2 = makeCanvas(w2, h2);
+        c2.getContext("2d").drawImage(img, 0, 0, w2, h2);
+        this.roomPhoto = c2;
+        this.onChange?.();
+      }
     }
     tick(source, w2, h2) {
       if (!w2 || !h2) return;
@@ -13257,15 +13320,16 @@
       const now = performance.now();
       this.frameNo++;
       this.workCtx.drawImage(source, 0, 0, this.work.width, this.work.height);
-      const busy = this.state !== "present";
+      const present = this.state === "present";
       if (this.models) {
         this.watchHands(now);
-        if (busy || this.frameNo % 2 === 0) this.segment(now);
-        if (this.haveMask && this.frameNo % 3 === 0) {
-          this.room.learn(this.work, this.softMask);
-          if (!busy) this.room.askAi();
+        if (!present || this.frameNo % 2 === 0) this.segment(now);
+        if (present && this.haveMask && this.frameNo % 3 === 0) {
+          this.room.learn(this.work, this.safeMask);
+          if (!this.roomPhoto) this.room.askAi();
         }
       }
+      if (this.photoJob) this.runPhotoJob(source, now);
       this.paint(source, now);
     }
     watchHands(now) {
@@ -13274,15 +13338,32 @@
         landmarks,
         handedness: res.handedness?.[i2]?.[0]?.categoryName || String(i2)
       }));
+      this.handBoxes = hands.map(({ landmarks }) => {
+        let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
+        for (const p2 of landmarks) {
+          x0 = Math.min(x0, p2.x);
+          y0 = Math.min(y0, p2.y);
+          x1 = Math.max(x1, p2.x);
+          y1 = Math.max(y1, p2.y);
+        }
+        const padX = (x1 - x0) * 0.35 + 0.02;
+        const padY = (y1 - y0) * 0.35 + 0.02;
+        return [x0 - padX, y0 - padY, x1 + padX, y1 + padY * 2.5];
+      });
       const aspect = this.work.width / this.work.height;
-      if (this.gesture.update(hands, now, aspect)) this.pendingSnapAt = now;
-      if (this.pendingSnapAt) {
-        const needSound = this.prefs.confirmWithSound && this.ear.listening;
-        if (!needSound || this.ear.heardClickNear(this.pendingSnapAt)) {
-          this.pendingSnapAt = 0;
+      const sawFlick = this.gesture.update(hands, now, aspect);
+      if (!this.prefs.confirmWithSound || !this.ear.listening) {
+        if (sawFlick) this.toggle("snap");
+        return;
+      }
+      for (const t2 of this.ear.takeClicks(this.clickCursor)) {
+        if (now - t2 < 200) break;
+        this.clickCursor = t2;
+        const ready = this.gesture.readyAt;
+        if (ready >= t2 - 1200 && ready <= t2 + 200) {
           this.toggle("snap");
-        } else if (now - this.pendingSnapAt > 450) {
-          this.pendingSnapAt = 0;
+        } else {
+          console.info("[Snap Vanish] heard a click, but no hand was in snap position");
         }
       }
     }
@@ -13295,9 +13376,9 @@
         mask.close?.();
       });
     }
-    /** Downsample confidences, dilate, feather, and refresh softMask. */
+    /** Downsample confidences, add hands, dilate, and refresh the masks. */
     shrinkMask(conf, mw, mh2) {
-      const { maskW: w2, maskH: h2, coverage, grown } = this;
+      const { maskW: w2, maskH: h2, coverage, grown, held, clearRun } = this;
       for (let y2 = 0; y2 < h2; y2++) {
         const sy = Math.min(mh2 - 1, Math.floor((y2 + 0.5) * mh2 / h2));
         for (let x2 = 0; x2 < w2; x2++) {
@@ -13305,7 +13386,14 @@
           coverage[y2 * w2 + x2] = conf[sy * mw + sx] * 255;
         }
       }
-      const r2 = 3;
+      for (const [x0, y0, x1, y1] of this.handBoxes) {
+        const ax = Math.max(0, Math.floor(x0 * w2));
+        const bx = Math.min(w2 - 1, Math.ceil(x1 * w2));
+        const ay = Math.max(0, Math.floor(y0 * h2));
+        const by = Math.min(h2 - 1, Math.ceil(y1 * h2));
+        for (let y2 = ay; y2 <= by; y2++) coverage.fill(255, y2 * w2 + ax, y2 * w2 + bx + 1);
+      }
+      const r2 = 4;
       const tmp = new Uint8ClampedArray(w2 * h2);
       for (let y2 = 0; y2 < h2; y2++) {
         for (let x2 = 0; x2 < w2; x2++) {
@@ -13317,6 +13405,9 @@
           tmp[y2 * w2 + x2] = m2;
         }
       }
+      const present = this.state === "present";
+      const px = this.maskImg.data;
+      const safe = this.safeImg.data;
       for (let y2 = 0; y2 < h2; y2++) {
         for (let x2 = 0; x2 < w2; x2++) {
           let m2 = 0;
@@ -13324,25 +13415,67 @@
             const yy = y2 + k2;
             if (yy >= 0 && yy < h2) m2 = Math.max(m2, tmp[yy * w2 + x2]);
           }
-          grown[y2 * w2 + x2] = m2 > 70 ? 255 : m2 * 3;
+          const i2 = y2 * w2 + x2;
+          const person = m2 > 30;
+          grown[i2] = person ? 255 : m2 * 8;
+          held[i2] = present ? grown[i2] : Math.max(grown[i2], held[i2] * 0.93);
+          clearRun[i2] = person ? 0 : Math.min(255, clearRun[i2] + 1);
+          px[i2 * 4] = px[i2 * 4 + 1] = px[i2 * 4 + 2] = 255;
+          px[i2 * 4 + 3] = held[i2];
+          safe[i2 * 4] = safe[i2 * 4 + 1] = safe[i2 * 4 + 2] = 255;
+          safe[i2 * 4 + 3] = clearRun[i2] >= CLEAR_FRAMES ? 255 : 0;
         }
       }
-      const px = this.maskImg.data;
-      for (let i2 = 0; i2 < w2 * h2; i2++) {
-        px[i2 * 4] = px[i2 * 4 + 1] = px[i2 * 4 + 2] = 255;
-        px[i2 * 4 + 3] = grown[i2];
-      }
       this.maskSmall.getContext("2d").putImageData(this.maskImg, 0, 0);
+      this.safeMask.getContext("2d").putImageData(this.safeImg, 0, 0);
       const s2 = this.softCtx;
       s2.clearRect(0, 0, this.softMask.width, this.softMask.height);
-      s2.filter = "blur(5px)";
+      s2.filter = "blur(4px)";
       s2.drawImage(this.maskSmall, 0, 0, this.softMask.width, this.softMask.height);
       s2.filter = "none";
       this.haveMask = true;
     }
+    // ---------------------------------------------------------------- room photo
+    /** Countdown, then save a photo of the empty room (user steps out). */
+    startRoomPhoto() {
+      this.photoJob = { at: performance.now() + PHOTO_COUNTDOWN_S * 1e3, message: "" };
+      this.onChange?.();
+    }
+    clearRoomPhoto() {
+      this.roomPhoto = null;
+      saveRoomPhoto(null);
+      this.onChange?.();
+    }
+    runPhotoJob(source, now) {
+      const job = this.photoJob;
+      if (job.done) return;
+      if (now < job.at) return;
+      let filled = 0;
+      for (const v2 of this.coverage) if (v2 > 128) filled++;
+      if (this.haveMask && filled / this.coverage.length > 0.03) {
+        job.done = true;
+        job.message = "You were still in the picture. Try again and step fully out of view.";
+      } else {
+        const c2 = makeCanvas(this.frameW, this.frameH);
+        c2.getContext("2d").drawImage(source, 0, 0, this.frameW, this.frameH);
+        this.roomPhoto = c2;
+        saveRoomPhoto(c2);
+        job.done = true;
+        job.message = "Room photo saved.";
+      }
+      setTimeout(() => {
+        if (this.photoJob === job) this.photoJob = null;
+      }, 4e3);
+      this.onChange?.();
+    }
     // ---------------------------------------------------------------- output
     /** Cover the person with the empty-room picture. */
     drawRoomOverPerson() {
+      const ctx = this.outCtx;
+      if (this.roomPhoto) {
+        ctx.drawImage(this.roomPhoto, 0, 0, this.frameW, this.frameH);
+        return;
+      }
       const p2 = this.patchCtx;
       const { width: w2, height: h2 } = this.patch;
       p2.globalCompositeOperation = "copy";
@@ -13350,29 +13483,48 @@
       p2.globalCompositeOperation = "source-in";
       p2.drawImage(this.room.render(), 0, 0);
       p2.globalCompositeOperation = "source-over";
-      this.outCtx.drawImage(this.patch, 0, 0, w2, h2, 0, 0, this.frameW, this.frameH);
+      ctx.drawImage(this.patch, 0, 0, w2, h2, 0, 0, this.frameW, this.frameH);
+    }
+    drawCountdown(now) {
+      const job = this.photoJob;
+      const ctx = this.outCtx;
+      const text = job.done ? job.message : `Step out of view\u2026 ${Math.ceil((job.at - now) / 1e3)}`;
+      const size = Math.round(this.frameH / 16);
+      ctx.save();
+      ctx.font = `600 ${size}px system-ui, sans-serif`;
+      const tw = ctx.measureText(text).width;
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      ctx.fillRect((this.frameW - tw) / 2 - size, size, tw + size * 2, size * 1.8);
+      ctx.fillStyle = "#fff";
+      ctx.textBaseline = "middle";
+      ctx.fillText(text, (this.frameW - tw) / 2, size * 1.9);
+      ctx.restore();
     }
     paint(source, now) {
       const ctx = this.outCtx;
       ctx.drawImage(source, 0, 0, this.frameW, this.frameH);
-      if (this.state === "present" || !this.haveMask) return;
-      this.drawRoomOverPerson();
-      if (this.state === "dissolving" || this.state === "reforming") {
-        const elapsed = (now - this.effectStart) / 1e3;
-        const d2 = this.storm.duration;
-        const t2 = this.state === "dissolving" ? elapsed : d2 - elapsed;
-        this.dustCtx.putImageData(this.storm.paint(Math.max(0, Math.min(d2, t2))), 0, 0);
-        ctx.imageSmoothingEnabled = true;
-        ctx.drawImage(this.dustLayer, 0, 0, this.frameW, this.frameH);
-        if (elapsed >= d2) {
-          if (this.state === "dissolving") {
-            this.setState("gone");
-          } else {
-            this.setState("present");
-            if (this.prefs.muteMic) this.mic.unmute();
-          }
-          this.storm = null;
+      if (this.state !== "present" && this.haveMask) {
+        this.drawRoomOverPerson();
+        if (this.state === "dissolving" || this.state === "reforming") this.drawDust(now);
+      }
+      if (this.photoJob) this.drawCountdown(now);
+    }
+    drawDust(now) {
+      const ctx = this.outCtx;
+      const elapsed = (now - this.effectStart) / 1e3;
+      const d2 = this.storm.duration;
+      const t2 = this.state === "dissolving" ? elapsed : d2 - elapsed;
+      this.dustCtx.putImageData(this.storm.paint(Math.max(0, Math.min(d2, t2))), 0, 0);
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(this.dustLayer, 0, 0, this.frameW, this.frameH);
+      if (elapsed >= d2) {
+        if (this.state === "dissolving") {
+          this.setState("gone");
+        } else {
+          this.setState("present");
+          if (this.prefs.muteMic) this.mic.unmute();
         }
+        this.storm = null;
       }
     }
     // ---------------------------------------------------------------- control
@@ -13404,7 +13556,7 @@
       if (!this.haveMask) return;
       this.lastToggle = now;
       if (this.state === "present") {
-        if (!this.room.aiFresh) {
+        if (!this.roomPhoto && !this.room.aiFresh) {
           this.room.quickFill();
           this.room.askAi({ force: true });
         }
@@ -13430,12 +13582,18 @@
       this.onChange?.();
     }
     status() {
+      const job = this.photoJob;
       return {
         state: this.state,
         ready: !!this.models && this.haveMask,
         error: this.modelError ? String(this.modelError.message || this.modelError) : null,
         aiFill: this.room?.aiReadyAt ? "ready" : this.room?.aiBusy ? "working" : "waiting",
-        listening: this.ear.listening
+        listening: this.ear.listening,
+        handSeen: performance.now() - this.gesture.handAt < 500,
+        handReady: performance.now() - this.gesture.readyAt < 500,
+        heardAgo: this.ear.lastClick ? Math.round(performance.now() - this.ear.lastClick) : null,
+        roomPhoto: !!this.roomPhoto,
+        photo: job ? job.done ? { message: job.message } : { countdown: Math.max(0, Math.ceil((job.at - performance.now()) / 1e3)) } : null
       };
     }
     close() {
@@ -13446,77 +13604,164 @@
     }
   };
 
+  // src/content/snap-sound.js
+  var SnapSound = class {
+    constructor(sampleRate = 48e3) {
+      this.rate = sampleRate;
+      this.block = Math.round(sampleRate * 4e-3);
+      this.setupHighPass(1500);
+      this.buf = new Float32Array(this.block);
+      this.fill = 0;
+      this.floor = 2e-3;
+      this.prev = 0;
+      this.pending = null;
+      this.blocksSeen = 0;
+      this.setSensitivity(5);
+    }
+    setSensitivity(level) {
+      const s2 = Math.min(10, Math.max(1, Number(level) || 5));
+      this.ratio = 15 - s2;
+      this.minLevel = 0.012 - s2 * 9e-4;
+    }
+    setupHighPass(cutoff) {
+      const w2 = 2 * Math.PI * cutoff / this.rate;
+      const alpha = Math.sin(w2) / (2 * Math.SQRT1_2);
+      const cos = Math.cos(w2);
+      const a0 = 1 + alpha;
+      this.b0 = (1 + cos) / 2 / a0;
+      this.b1 = -(1 + cos) / a0;
+      this.b2 = this.b0;
+      this.a1 = -2 * cos / a0;
+      this.a2 = (1 - alpha) / a0;
+      this.x1 = this.x2 = this.y1 = this.y2 = 0;
+    }
+    /**
+     * Feed raw samples. Returns an array of detected snaps as offsets in
+     * seconds relative to the *end* of this chunk (negative numbers).
+     */
+    push(samples) {
+      const hits = [];
+      for (let i2 = 0; i2 < samples.length; i2++) {
+        const x2 = samples[i2];
+        const y2 = this.b0 * x2 + this.b1 * this.x1 + this.b2 * this.x2 - this.a1 * this.y1 - this.a2 * this.y2;
+        this.x2 = this.x1;
+        this.x1 = x2;
+        this.y2 = this.y1;
+        this.y1 = y2;
+        this.buf[this.fill++] = y2;
+        if (this.fill === this.block) {
+          this.fill = 0;
+          const hit = this.analyse();
+          if (hit !== null) hits.push(hit - (samples.length - 1 - i2) / this.rate);
+        }
+      }
+      return hits;
+    }
+    analyse() {
+      this.blocksSeen++;
+      let sum = 0;
+      for (let i2 = 0; i2 < this.block; i2++) sum += this.buf[i2] * this.buf[i2];
+      const e2 = Math.sqrt(sum / this.block);
+      const blockSec = this.block / this.rate;
+      let result = null;
+      if (this.pending) {
+        const p2 = this.pending;
+        p2.age++;
+        p2.peak = Math.max(p2.peak, e2);
+        if (e2 < p2.peak * 0.22) {
+          result = -(p2.age * blockSec);
+          this.pending = null;
+          this.quietUntil = this.blocksSeen + Math.round(0.25 / blockSec);
+        } else if (p2.age * blockSec > 0.07) {
+          this.pending = null;
+        }
+      } else if (this.blocksSeen > 25 && !(this.quietUntil > this.blocksSeen) && e2 > this.minLevel && e2 > this.floor * this.ratio && e2 > this.prev * 3) {
+        this.pending = { age: 0, peak: e2 };
+      }
+      if (!this.pending) {
+        const target = Math.min(e2, this.floor * 4);
+        this.floor += (target - this.floor) * (target < this.floor ? 0.08 : 0.01);
+        this.floor = Math.max(this.floor, 3e-4);
+      }
+      this.prev = e2;
+      return result;
+    }
+  };
+
   // src/content/click-ear.js
   var ClickEar = class {
     constructor() {
       this.ctx = null;
-      this.source = null;
-      this.copy = null;
+      this.stream = null;
+      this.origin = null;
+      this.detector = null;
       this.clicks = [];
-      this.floor = 4e-3;
-      this.setSensitivity(5);
+      this.sensitivity = 5;
+      this.opening = null;
     }
     get listening() {
-      return !!this.copy && this.copy.readyState === "live";
+      return !!this.stream && this.stream.getAudioTracks().some((t2) => t2.readyState === "live");
     }
     setSensitivity(level) {
-      const s2 = Math.min(10, Math.max(1, Number(level) || 5)) / 10;
-      this.ratio = 9 - 5 * s2;
-      this.minLevel = 0.03 - 0.018 * s2;
+      this.sensitivity = level;
+      this.detector?.setSensitivity(level);
     }
-    listenTo(micTrack) {
-      if (this.listening) return;
-      this.stop();
-      try {
+    /** Start listening on the same device as the meeting's mic track. */
+    async listenTo(micTrack) {
+      if (this.listening || this.opening) return;
+      this.opening = (async () => {
+        this.stop();
         this.origin = micTrack;
-        this.copy = micTrack.clone();
-        this.copy.enabled = true;
+        const deviceId = micTrack?.getSettings?.().deviceId;
+        const raw = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+        try {
+          this.stream = await navigator.mediaDevices.getUserMedia({ audio: deviceId ? { ...raw, deviceId: { exact: deviceId } } : raw }).catch((err) => {
+            if (!deviceId || err?.name !== "OverconstrainedError") throw err;
+            return navigator.mediaDevices.getUserMedia({ audio: raw });
+          });
+        } catch (err) {
+          console.info("[Snap Vanish] raw mic unavailable, using the meeting mic", err);
+          const copy = micTrack.clone();
+          copy.enabled = true;
+          this.stream = new MediaStream([copy]);
+        }
         this.ctx = new AudioContext({ latencyHint: "interactive" });
-        this.source = this.ctx.createMediaStreamSource(new MediaStream([this.copy]));
-        const tap = this.ctx.createScriptProcessor(512, 1, 1);
+        this.detector = new SnapSound(this.ctx.sampleRate);
+        this.detector.setSensitivity(this.sensitivity);
+        const source = this.ctx.createMediaStreamSource(this.stream);
+        const tap = this.ctx.createScriptProcessor(1024, 1, 1);
         const silent = this.ctx.createGain();
         silent.gain.value = 0;
-        tap.onaudioprocess = (e2) => this.inspect(e2.inputBuffer.getChannelData(0));
-        this.source.connect(tap).connect(silent).connect(this.ctx.destination);
+        tap.onaudioprocess = (e2) => {
+          const hits = this.detector.push(e2.inputBuffer.getChannelData(0));
+          if (!hits.length) return;
+          const latency = ((this.ctx.baseLatency || 0) + 1024 / this.ctx.sampleRate) * 1e3;
+          const now = performance.now();
+          for (const offset of hits) this.clicks.push(now + offset * 1e3 - latency);
+          while (this.clicks.length > 8) this.clicks.shift();
+        };
+        source.connect(tap).connect(silent).connect(this.ctx.destination);
         this.ctx.resume().catch(() => {
         });
-      } catch (err) {
-        console.warn("[Snap Vanish] mic confirmation unavailable", err);
+      })().catch((err) => {
+        console.warn("[Snap Vanish] snap sound detection unavailable", err);
         this.stop();
-      }
+      }).finally(() => this.opening = null);
+      return this.opening;
     }
-    inspect(samples) {
-      let sum = 0;
-      let peak = 0;
-      for (let i2 = 1; i2 < samples.length; i2++) {
-        const d2 = samples[i2] - samples[i2 - 1];
-        sum += d2 * d2;
-        const a2 = Math.abs(d2);
-        if (a2 > peak) peak = a2;
-      }
-      const level = Math.sqrt(sum / (samples.length - 1));
-      const crest = peak / (level || 1e-6);
-      if (level > this.minLevel && level > this.floor * this.ratio && crest > 3.2) {
-        const latency = (this.ctx.baseLatency || 0) * 1e3;
-        this.clicks.push(performance.now() - latency);
-        if (this.clicks.length > 12) this.clicks.shift();
-      }
-      const target = Math.min(level, this.floor * 3);
-      this.floor += (target - this.floor) * 0.02;
-      this.floor = Math.max(this.floor, 15e-4);
+    /** Snap sounds heard since `since` (and not yet used). */
+    takeClicks(since) {
+      const fresh = this.clicks.filter((t2) => t2 > since);
+      return fresh;
     }
-    heardClickNear(t2, before = 300, after = 350) {
-      return this.clicks.some((c2) => c2 >= t2 - before && c2 <= t2 + after);
+    get lastClick() {
+      return this.clicks.at(-1) ?? 0;
     }
     stop() {
-      try {
-        this.source?.disconnect();
-      } catch {
-      }
-      this.copy?.stop();
+      this.stream?.getTracks().forEach((t2) => t2.stop());
       this.ctx?.close().catch(() => {
       });
-      this.ctx = this.source = this.copy = this.origin = null;
+      this.ctx = this.stream = this.origin = this.detector = null;
     }
   };
 
@@ -13560,7 +13805,9 @@
     for (const act of acts) act.setPrefs(prefs);
   }
   function hearWith(track) {
-    if (!ear.listening && track.readyState === "live") ear.listenTo(track);
+    if (prefs.confirmWithSound && acts.size && !ear.listening && track.readyState === "live") {
+      ear.listenTo(track);
+    }
   }
   document.addEventListener(
     "snapvanish:port",
@@ -13588,6 +13835,8 @@
         }
       });
       acts.add(act);
+      const meetingMic = mic.live()[0];
+      if (meetingMic) hearWith(meetingMic);
       port.setAttribute("data-accepted", "1");
     },
     true
@@ -13598,7 +13847,8 @@
   addEventListener("keydown", wakeAudio, true);
   setInterval(() => {
     if (ear.origin && ear.origin.readyState === "ended") ear.stop();
-    if (!ear.listening && acts.size) {
+    if (ear.listening && (!acts.size || !prefs.confirmWithSound)) ear.stop();
+    if (!ear.listening && acts.size && prefs.confirmWithSound) {
       const next = mic.live().find((t2) => t2.readyState === "live");
       if (next) ear.listenTo(next);
     }
@@ -13610,6 +13860,12 @@
       act.toggle(msg.reason || "button");
       reply(act.status());
     } else if (msg?.type === MSG.STATUS) {
+      reply(act.status());
+    } else if (msg?.type === MSG.ROOM_PHOTO) {
+      act.startRoomPhoto();
+      reply(act.status());
+    } else if (msg?.type === MSG.ROOM_PHOTO_CLEAR) {
+      act.clearRoomPhoto();
       reply(act.status());
     }
     return false;

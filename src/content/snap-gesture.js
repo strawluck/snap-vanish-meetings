@@ -1,5 +1,12 @@
 // Finger-snap recognition from hand landmarks.
 //
+// Two signals come out of this:
+//   * `readyAt`: the last time a hand was up in "about to snap" position
+//     (thumb and middle finger together, hand raised). Combined with the
+//     snap *sound*, this is the main trigger: the flick itself is faster
+//     than one webcam frame, so the camera often can't see it happen.
+//   * `update()` returning true: the full flick was actually seen.
+//
 // A snap has a very specific shape that typing, waving or scratching your
 // head doesn't have:
 //   1. "Loaded": the thumb tip and middle-finger tip press together while the
@@ -29,7 +36,10 @@ function describeHand(points, aspect) {
   const p = points.map((q) => ({ x: q.x * aspect, y: q.y }));
   const size = dist(p[L.WRIST], p[L.MIDDLE_MCP]) || 1e-3;
   const folded = (tip, mcp) => dist(p[tip], p[L.WRIST]) < dist(p[mcp], p[L.WRIST]) * 1.35;
+  let top = 1;
+  for (const q of points) top = Math.min(top, q.y);
   return {
+    raised: points[L.WRIST].y < 0.97 && top < 0.85, // not just resting at the bottom edge
     gap: dist(p[L.THUMB_TIP], p[L.MIDDLE_TIP]) / size,
     reach: dist(p[L.MIDDLE_TIP], p[L.WRIST]) / size,
     tip: p[L.MIDDLE_TIP],
@@ -41,6 +51,8 @@ function describeHand(points, aspect) {
 export class SnapGesture {
   constructor() {
     this.tracks = new Map(); // handedness → { loadedAt, loaded }
+    this.readyAt = -Infinity; // last frame a hand was in snap position
+    this.handAt = -Infinity; // last frame any hand was visible
     this.setSensitivity(5);
   }
 
@@ -51,6 +63,7 @@ export class SnapGesture {
     this.reachDrop = 0.93 - 0.1 * s; // middle tip must move this much closer to wrist
     this.windowMs = 140 + 120 * s; // max time between loaded and fired
     this.minCurled = s > 0.75 ? 0 : 1; // folded ring/pinky fingers required
+    this.readyGap = 0.38 + 0.3 * s; // looser: thumb roughly touching middle finger
   }
 
   /**
@@ -66,6 +79,8 @@ export class SnapGesture {
     for (const { landmarks, handedness } of hands) {
       seen.add(handedness);
       const h = describeHand(landmarks, aspect);
+      this.handAt = now;
+      if (h.raised && h.gap < this.readyGap && h.curled >= this.minCurled) this.readyAt = now;
       const track = this.tracks.get(handedness) ?? { loaded: null, loadedAt: -Infinity };
 
       if (h.gap < this.loadGap && h.curled >= this.minCurled) {
@@ -80,6 +95,7 @@ export class SnapGesture {
         if (opened && slammed && travel > 0.35) {
           fired = true;
           track.loaded = null;
+          this.readyAt = now;
         }
       } else if (now - track.loadedAt > this.windowMs) {
         track.loaded = null;

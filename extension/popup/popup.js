@@ -27,6 +27,8 @@
   var MSG = Object.freeze({
     TOGGLE: "snapvanish/toggle",
     STATUS: "snapvanish/status",
+    ROOM_PHOTO: "snapvanish/room-photo",
+    ROOM_PHOTO_CLEAR: "snapvanish/room-photo-clear",
     INPAINT: "snapvanish/inpaint",
     WAKE_INPAINTER: "snapvanish/wake-inpainter"
   });
@@ -123,8 +125,59 @@
     $("snapLabel").textContent = label;
     btn.disabled = false;
   }
+  function showRoom(s) {
+    const busy = s?.photo?.countdown !== void 0;
+    const canShoot = !!s?.ready && s.state === "present" && !busy;
+    const hasPhoto = !!(s ? s.roomPhoto : savedThumb);
+    $("takePhoto").disabled = !canShoot;
+    $("retakePhoto").disabled = !canShoot;
+    $("takePhoto").hidden = hasPhoto;
+    $("roomPhotoRow").hidden = !hasPhoto || !savedThumb;
+    $("roomMode").textContent = !s ? "" : hasPhoto ? "Photo \u2713" : "AI fill";
+    const note = $("roomNote");
+    if (busy) note.textContent = `Step out of view\u2026 ${s.photo.countdown}`;
+    else if (s?.photo?.message) note.textContent = s.photo.message;
+    else if (hasPhoto) note.textContent = "Shown when you vanish. Retake it if you move your camera or the lighting changes.";
+    else if (!s) note.textContent = "Open your Meet call first, then capture your empty room here.";
+    else
+      note.textContent = "Do this first for a clean, sharp room. Click, then step out of the camera\u2019s view until the 5 second countdown ends.";
+  }
+  var savedThumb = null;
+  async function loadThumb() {
+    const { roomPhoto } = await chrome.storage.local.get("roomPhoto");
+    savedThumb = roomPhoto?.src || null;
+    if (savedThumb) $("roomThumb").src = savedThumb;
+  }
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && "roomPhoto" in changes) loadThumb().then(refresh);
+  });
+  function showSnapCheck(s) {
+    const box = $("snapCheck");
+    box.hidden = !s?.ready;
+    if (box.hidden) return;
+    const hand = $("handCheck");
+    hand.className = "pill" + (s.handReady ? " on" : s.handSeen ? " warm" : "");
+    hand.textContent = s.handReady ? "\u270B Ready to snap" : s.handSeen ? "\u270B Hand seen" : "\u270B No hand";
+    const sound = $("soundCheck");
+    if (!prefs.confirmWithSound) {
+      sound.className = "pill";
+      sound.textContent = "\u{1F507} Sound check off";
+    } else if (!s.listening) {
+      sound.className = "pill";
+      sound.textContent = "\u{1F3A4} Mic not available";
+    } else if (s.heardAgo !== null && s.heardAgo < 2500) {
+      sound.className = "pill on";
+      sound.textContent = "\u{1F50A} Snap heard";
+    } else {
+      sound.className = "pill warm";
+      sound.textContent = "\u{1F3A4} Listening";
+    }
+  }
   async function refresh() {
-    showStatus(await ask(MSG.STATUS));
+    const s = await ask(MSG.STATUS);
+    showStatus(s);
+    showRoom(s);
+    showSnapCheck(s);
   }
   async function showShortcut() {
     const cmds = await chrome.commands.getAll();
@@ -145,12 +198,20 @@
     $("snapNow").addEventListener("click", async () => {
       showStatus(await ask(MSG.TOGGLE));
     });
+    const shoot = async () => showRoom(await ask(MSG.ROOM_PHOTO));
+    $("takePhoto").addEventListener("click", shoot);
+    $("retakePhoto").addEventListener("click", shoot);
+    $("clearPhoto").addEventListener("click", async () => {
+      await chrome.storage.local.remove("roomPhoto");
+      showRoom(await ask(MSG.ROOM_PHOTO_CLEAR));
+    });
     $("editShortcut").addEventListener("click", (e) => {
       e.preventDefault();
       chrome.tabs.create({ url: "chrome://extensions/shortcuts" });
     });
     showShortcut();
+    await loadThumb();
     refresh();
-    setInterval(refresh, 700);
+    setInterval(refresh, 300);
   })();
 })();

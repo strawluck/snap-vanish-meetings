@@ -21,7 +21,9 @@ function applyPrefs(next) {
 }
 
 function hearWith(track) {
-  if (!ear.listening && track.readyState === 'live') ear.listenTo(track);
+  if (prefs.confirmWithSound && acts.size && !ear.listening && track.readyState === 'live') {
+    ear.listenTo(track);
+  }
 }
 
 document.addEventListener(
@@ -53,6 +55,8 @@ document.addEventListener(
       },
     });
     acts.add(act);
+    const meetingMic = mic.live()[0];
+    if (meetingMic) hearWith(meetingMic);
     port.setAttribute('data-accepted', '1');
   },
   true
@@ -67,7 +71,8 @@ addEventListener('keydown', wakeAudio, true);
 // switches its microphone, we stop ours (and move to the new one).
 setInterval(() => {
   if (ear.origin && ear.origin.readyState === 'ended') ear.stop();
-  if (!ear.listening && acts.size) {
+  if (ear.listening && (!acts.size || !prefs.confirmWithSound)) ear.stop();
+  if (!ear.listening && acts.size && prefs.confirmWithSound) {
     const next = mic.live().find((t) => t.readyState === 'live');
     if (next) ear.listenTo(next);
   }
@@ -80,6 +85,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     act.toggle(msg.reason || 'button');
     reply(act.status());
   } else if (msg?.type === MSG.STATUS) {
+    reply(act.status());
+  } else if (msg?.type === MSG.ROOM_PHOTO) {
+    act.startRoomPhoto();
+    reply(act.status());
+  } else if (msg?.type === MSG.ROOM_PHOTO_CLEAR) {
+    act.clearRoomPhoto();
     reply(act.status());
   }
   return false;

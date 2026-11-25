@@ -38,21 +38,26 @@ export class EmptyRoom {
     this.holeShare = 1;
   }
 
-  /** Blend the current frame into memory where no person is present. */
-  learn(frame, personMask) {
+  /**
+   * Blend the current frame into memory, but only where `safeMask` is opaque.
+   * The mask is hard-edged and only covers spots that have been clearly
+   * empty for a while, so blurry arms and soft edges never leak in.
+   */
+  learn(frame, safeMask) {
     const { cutoutCtx: c, memoryCtx: m, w, h } = this;
     c.globalCompositeOperation = 'copy';
     c.drawImage(frame, 0, 0, w, h);
-    c.globalCompositeOperation = 'destination-out';
-    c.drawImage(personMask, 0, 0, w, h); // dilated + feathered silhouette
+    c.globalCompositeOperation = 'destination-in';
+    c.imageSmoothingQuality = 'high';
+    c.drawImage(safeMask, 0, 0, w, h); // smooth upscale avoids blocky seams
     c.globalCompositeOperation = 'source-over';
 
     // Unknown pixels get the frame at full strength, known ones drift slowly
-    // so lighting changes are followed without ghosting.
+    // so lighting changes are followed.
     m.globalCompositeOperation = 'destination-over';
     m.drawImage(this.cutout, 0, 0);
     m.globalCompositeOperation = 'source-over';
-    m.globalAlpha = 0.12;
+    m.globalAlpha = 0.1;
     m.drawImage(this.cutout, 0, 0);
     m.globalAlpha = 1;
     this.learnedSinceAi++;

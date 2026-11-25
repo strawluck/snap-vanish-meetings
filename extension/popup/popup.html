@@ -25,10 +25,27 @@
     <span id="statusText">Checking this tab…</span>
   </section>
 
+  <section class="card room">
+    <div class="row"><span class="label">Empty room</span><span class="badge" id="roomMode"></span></div>
+    <div class="room-photo" id="roomPhotoRow" hidden>
+      <img id="roomThumb" alt="Your saved empty room">
+      <div class="room-side">
+        <button id="retakePhoto" class="ghost">Retake</button>
+        <button id="clearPhoto" class="link">Remove</button>
+      </div>
+    </div>
+    <button id="takePhoto" class="capture" disabled>Capture empty room</button>
+    <p class="note" id="roomNote"></p>
+  </section>
+
   <button id="snapNow" class="snap" disabled>
     <span class="snap-icon">✦</span>
     <span id="snapLabel">Snap now</span>
   </button>
+  <div class="check-line" id="snapCheck" hidden>
+    <span id="handCheck" class="pill">Hand</span>
+    <span id="soundCheck" class="pill">Sound</span>
+  </div>
   <p class="shortcut">Shortcut: <kbd id="shortcut">not set</kbd> · <a href="#" id="editShortcut">change</a></p>
 
   <section class="card">
@@ -57,7 +74,7 @@
   <section class="card toggles">
     <label class="check">
       <input type="checkbox" id="confirmWithSound">
-      <span>Confirm with snap sound<small>Hand tracking spots the snap, the mic click confirms it</small></span>
+      <span>Confirm with snap sound<small>Listens for the snap while your hand is in snap position</small></span>
     </label>
     <label class="check">
       <input type="checkbox" id="muteMic">
