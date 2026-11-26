@@ -84,7 +84,7 @@ The sound is what catches the exact moment, because the finger flick is faster t
 
 To make you disappear, a second model works out which part of the picture is you and which part is the room. If you took a room photo, it simply shows that photo while you're gone. If not, it builds its own picture of the room while you're on camera, adding to it whenever you move and uncover more of the wall behind you. It only adds spots that have been clearly empty for a moment, so a fast-moving arm doesn't get baked in. The spots it has never seen, like the chair right behind you, get filled in by a third model called MI-GAN. It works like the "remove object" tool in a photo editor.
 
-When you snap, it takes a snapshot of you and turns each pixel into a speck of dust. The specks fall off in patches, turn grey, and drift away, with the empty room showing behind them. Coming back plays the same animation in reverse. Your mic is switched off while you're gone and back on when you return.
+When you snap, each part of you turns into specks of dust that fall off in patches, turn grey, and drift away, with the empty room showing behind them. The part of you that hasn't turned to dust yet is always your live camera, so you keep moving naturally while you dissolve. Coming back plays the same animation in reverse: the dust flies back to wherever you are now, and you reassemble as you look at that moment, not frozen in the pose you snapped in. Your mic is switched off while you're gone and back on when you return.
 
 All three models are included in the extension, so nothing gets downloaded during a call and nothing gets uploaded.
 

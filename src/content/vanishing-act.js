@@ -124,6 +124,17 @@ export class VanishingAct {
     this.patchCtx = this.patch.getContext('2d');
     this.dustLayer = makeCanvas(ROOM_W, rh);
     this.dustCtx = this.dustLayer.getContext('2d');
+    // Live-person stencil pieces (see drawDust).
+    this.cutImg = new ImageData(MASK_W, mh);
+    this.cutSmall = makeCanvas(MASK_W, mh);
+    this.personCut = makeCanvas(ROOM_W, rh); // un-dilated silhouette, room res
+    this.releaseLayer = makeCanvas(ROOM_W, rh);
+    this.releaseCtx = this.releaseLayer.getContext('2d');
+    this.stencil = makeCanvas(ROOM_W, rh);
+    this.stencilCtx = this.stencil.getContext('2d');
+    this.full = makeCanvas(w, h); // live camera cut to the attached pixels
+    this.fullCtx = this.full.getContext('2d');
+    this.centroid = [MASK_W / 2, mh / 2];
     this.room = new EmptyRoom(ROOM_W, rh);
     this.haveMask = false;
     this.loadSavedPhoto(w, h);
@@ -271,6 +282,25 @@ export class VanishingAct {
         safe[i * 4 + 3] = clearRun[i] >= CLEAR_FRAMES ? 255 : 0;
       }
     }
+    // Tight silhouette (no growing) and its centre, for the live stencil.
+    const cut = this.cutImg.data;
+    let cx = 0, cy = 0, cn = 0;
+    for (let i = 0; i < w * h; i++) {
+      cut[i * 4 + 3] = coverage[i];
+      if (coverage[i] > 128) {
+        cx += i % w;
+        cy += (i / w) | 0;
+        cn++;
+      }
+    }
+    if (cn > 20) this.centroid = [cx / cn, cy / cn];
+    this.cutSmall.getContext('2d').putImageData(this.cutImg, 0, 0);
+    const pc = this.personCut.getContext('2d');
+    pc.clearRect(0, 0, this.personCut.width, this.personCut.height);
+    pc.filter = 'blur(1.5px)';
+    pc.drawImage(this.cutSmall, 0, 0, this.personCut.width, this.personCut.height);
+    pc.filter = 'none';
+
     this.maskSmall.getContext('2d').putImageData(this.maskImg, 0, 0);
     this.safeMask.getContext('2d').putImageData(this.safeImg, 0, 0);
     const s = this.softCtx;
@@ -361,17 +391,48 @@ export class VanishingAct {
     ctx.drawImage(source, 0, 0, this.frameW, this.frameH);
     if (this.state !== 'present' && this.haveMask) {
       this.drawRoomOverPerson();
-      if (this.state === 'dissolving' || this.state === 'reforming') this.drawDust(now);
+      if (this.state === 'dissolving' || this.state === 'reforming') this.drawDust(source, now);
     }
     if (this.photoJob) this.drawCountdown(now);
   }
 
-  drawDust(now) {
+  drawDust(source, now) {
     const ctx = this.outCtx;
     const elapsed = (now - this.effectStart) / 1000;
     const d = this.storm.duration;
-    const t = this.state === 'dissolving' ? elapsed : d - elapsed;
-    this.dustCtx.putImageData(this.storm.paint(Math.max(0, Math.min(d, t))), 0, 0);
+    const t = Math.max(0, Math.min(d, this.state === 'dissolving' ? elapsed : d - elapsed));
+
+    const { width: rw, height: rh } = this.work;
+    const scale = rw / this.maskW;
+    this.storm.paint(t, {
+      rgba: this.workCtx.getImageData(0, 0, rw, rh).data,
+      cover: this.coverage,
+      gw: this.maskW,
+      gh: this.maskH,
+      dx: (this.centroid[0] - this.stormCentroid[0]) * scale,
+      dy: (this.centroid[1] - this.stormCentroid[1]) * scale,
+    });
+
+    // The part of you that hasn't turned to dust: the live camera, at full
+    // resolution, cut to (current silhouette ∩ not-yet-released pixels).
+    this.releaseCtx.putImageData(this.storm.release, 0, 0);
+    const st = this.stencilCtx;
+    st.globalCompositeOperation = 'copy';
+    st.drawImage(this.personCut, 0, 0);
+    st.globalCompositeOperation = 'destination-in';
+    st.drawImage(this.releaseLayer, 0, 0);
+    st.globalCompositeOperation = 'source-over';
+    const f = this.fullCtx;
+    f.globalCompositeOperation = 'copy';
+    f.imageSmoothingEnabled = true;
+    f.drawImage(this.stencil, 0, 0, this.frameW, this.frameH);
+    f.globalCompositeOperation = 'source-in';
+    f.drawImage(source, 0, 0, this.frameW, this.frameH);
+    f.globalCompositeOperation = 'source-over';
+    ctx.drawImage(this.full, 0, 0);
+
+    // Dust in flight.
+    this.dustCtx.putImageData(this.storm.grains, 0, 0);
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(this.dustLayer, 0, 0, this.frameW, this.frameH);
 
@@ -406,6 +467,7 @@ export class VanishingAct {
     const rgba = actx.getImageData(0, 0, w, h).data;
     const alpha = new Uint8ClampedArray(w * h);
     for (let i = 0; i < alpha.length; i++) alpha[i] = rgba[i * 4 + 3];
+    this.stormCentroid = [...this.centroid];
     return new DustStorm(pixels, alpha, {
       seconds: Number(this.prefs.dustSeconds) || 3,
       direction: this.prefs.direction,

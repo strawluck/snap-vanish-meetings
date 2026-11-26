@@ -13063,7 +13063,7 @@
   }
   var DustStorm = class {
     /**
-     * @param {ImageData} pixels  snapshot of the frame (effect resolution)
+     * @param {ImageData} pixels  frame at the moment of the snap (effect resolution)
      * @param {Uint8ClampedArray} alpha  person coverage 0..255, same size
      * @param {{seconds:number, direction:string}} opts
      */
@@ -13072,8 +13072,10 @@
       this.w = w2;
       this.h = h2;
       this.seconds = seconds;
-      this.out = new ImageData(w2, h2);
-      this.out32 = new Uint32Array(this.out.data.buffer);
+      this.grains = new ImageData(w2, h2);
+      this.grains32 = new Uint32Array(this.grains.data.buffer);
+      this.release = new ImageData(w2, h2);
+      this.release32 = new Uint32Array(this.release.data.buffer);
       let [wx, wy] = windFor(direction, Math.random());
       const len = Math.hypot(wx, wy);
       wx /= len;
@@ -13090,6 +13092,20 @@
           if (p2 > maxP) maxP = p2;
         }
       }
+      if (!count) {
+        minP = 0;
+        maxP = w2;
+      }
+      const span = maxP - minP || 1;
+      const peel = seconds * 0.62;
+      this.field = new Float32Array(w2 * h2);
+      for (let y2 = 0; y2 < h2; y2++) {
+        for (let x2 = 0; x2 < w2; x2++) {
+          const along = Math.min(1, Math.max(0, 1 - (x2 * wx + y2 * wy - minP) / span));
+          const n2 = blotch(x2 / 22, y2 / 22) * 0.65 + blotch(x2 / 6, y2 / 6) * 0.35;
+          this.field[y2 * w2 + x2] = peel * (0.55 * along + 0.45 * n2);
+        }
+      }
       this.count = count;
       this.x0 = new Float32Array(count);
       this.y0 = new Float32Array(count);
@@ -13098,18 +13114,14 @@
       this.speed = new Float32Array(count);
       this.phase = new Float32Array(count);
       this.rgb = new Uint32Array(count);
-      const span = maxP - minP || 1;
-      const peel = seconds * 0.62;
       let k2 = 0;
       for (let i2 = 0; i2 < w2 * h2; i2++) {
         if (alpha[i2] <= 90) continue;
         const x2 = i2 % w2;
         const y2 = i2 / w2 | 0;
-        const along = 1 - (x2 * wx + y2 * wy - minP) / span;
-        const n2 = blotch(x2 / 22, y2 / 22) * 0.65 + blotch(x2 / 6, y2 / 6) * 0.35;
         this.x0[k2] = x2;
         this.y0[k2] = y2;
-        this.start[k2] = peel * (0.55 * along + 0.45 * n2);
+        this.start[k2] = this.field[i2];
         this.life[k2] = seconds * (0.18 + 0.22 * hash(x2 + 7, y2 + 3));
         this.speed[k2] = 0.6 + hash(x2 + 1, y2 + 9) * 0.9;
         this.phase[k2] = hash(x2 + 5, y2 + 2) * Math.PI * 2;
@@ -13124,54 +13136,73 @@
       return this.total;
     }
     /**
-     * Draw the state at time t (seconds since the snap). For reappearing, call
-     * with t running from duration down to 0.
+     * Update `release` and `grains` for time t (seconds since the snap; for
+     * coming back, call with t running from duration down to 0).
+     * @param {number} t
+     * @param {{rgba: Uint8ClampedArray, cover: Uint8ClampedArray, gw: number, gh: number,
+     *          dx: number, dy: number}} live  current frame, person grid, and how far
+     *          the person has moved since the snap (effect pixels)
      */
-    paint(t2) {
-      const { w: w2, h: h2, out32, wind } = this;
-      out32.fill(0);
+    paint(t2, live) {
+      const { w: w2, h: h2, field, release32, grains32, wind } = this;
+      const dx = Math.round(live.dx);
+      const dy = Math.round(live.dy);
+      for (let y2 = 0; y2 < h2; y2++) {
+        const fy = Math.min(h2 - 1, Math.max(0, y2 - dy));
+        for (let x2 = 0; x2 < w2; x2++) {
+          const fx = Math.min(w2 - 1, Math.max(0, x2 - dx));
+          release32[y2 * w2 + x2] = field[fy * w2 + fx] > t2 ? 4278190080 : 0;
+        }
+      }
+      grains32.fill(0);
       const reach = Math.max(w2, h2) * 0.55;
       const [wx, wy] = wind;
+      const { rgba, cover, gw, gh: gh2 } = live;
+      const cellW = w2 / gw;
+      const cellH = h2 / gh2;
       for (let k2 = 0; k2 < this.count; k2++) {
-        const c2 = this.rgb[k2];
         const age = t2 - this.start[k2];
-        let x2 = this.x0[k2];
-        let y2 = this.y0[k2];
-        let a2 = 255;
-        let r2 = c2 >> 16 & 255;
-        let g2 = c2 >> 8 & 255;
-        let b2 = c2 & 255;
-        if (age > 0) {
-          const u2 = age / this.life[k2];
-          if (u2 >= 1) continue;
-          const s2 = this.speed[k2];
-          const d2 = reach * s2 * (0.35 * u2 + 0.65 * u2 * u2);
-          const curl = Math.sin(u2 * 5 + this.phase[k2]) * 14 * u2 * s2;
-          x2 += wx * d2 - wy * curl;
-          y2 += wy * d2 + wx * curl - 18 * u2 * u2;
-          const ash = Math.min(1, u2 * 2.4);
-          r2 += (ASH[0] - r2) * ash;
-          g2 += (ASH[1] - g2) * ash;
-          b2 += (ASH[2] - b2) * ash;
-          a2 = 255 * (1 - u2) * (1 - u2 * 0.35);
-          if ((k2 & 3) === 0 && u2 > 0.15) continue;
-        } else if (age > -0.08) {
-          const f2 = (age + 0.08) / 0.08;
-          r2 *= 1 - 0.45 * f2;
-          g2 *= 1 - 0.45 * f2;
-          b2 *= 1 - 0.45 * f2;
+        if (age <= 0) continue;
+        const u2 = age / this.life[k2];
+        if (u2 >= 1) continue;
+        if ((k2 & 3) === 0 && u2 > 0.15) continue;
+        const hx = this.x0[k2] + dx;
+        const hy = this.y0[k2] + dy;
+        let r2, g2, b2;
+        const hxi = hx | 0;
+        const hyi = hy | 0;
+        const inFrame = hxi >= 0 && hyi >= 0 && hxi < w2 && hyi < h2;
+        if (inFrame && cover[(hyi / cellH | 0) * gw + (hxi / cellW | 0)] > 90) {
+          const p2 = (hyi * w2 + hxi) * 4;
+          r2 = rgba[p2];
+          g2 = rgba[p2 + 1];
+          b2 = rgba[p2 + 2];
+        } else {
+          const c2 = this.rgb[k2];
+          r2 = c2 >> 16 & 255;
+          g2 = c2 >> 8 & 255;
+          b2 = c2 & 255;
         }
+        const s2 = this.speed[k2];
+        const d2 = reach * s2 * (0.35 * u2 + 0.65 * u2 * u2);
+        const curl = Math.sin(u2 * 5 + this.phase[k2]) * 14 * u2 * s2;
+        const x2 = hx + wx * d2 - wy * curl;
+        const y2 = hy + wy * d2 + wx * curl - 18 * u2 * u2;
+        const ash = Math.min(1, u2 * 2.4);
+        r2 += (ASH[0] - r2) * ash;
+        g2 += (ASH[1] - g2) * ash;
+        b2 += (ASH[2] - b2) * ash;
+        const a2 = 255 * (1 - u2) * (1 - u2 * 0.35);
         const xi2 = x2 | 0;
         const yi2 = y2 | 0;
         if (xi2 < 0 || yi2 < 0 || xi2 >= w2 || yi2 >= h2) continue;
         const px = (a2 & 255) << 24 | (b2 & 255) << 16 | (g2 & 255) << 8 | r2 & 255;
-        out32[yi2 * w2 + xi2] = px;
-        if (age > 0 && k2 % 3 === 0 && xi2 + 1 < w2 && yi2 + 1 < h2) {
-          out32[yi2 * w2 + xi2 + 1] = px;
-          out32[(yi2 + 1) * w2 + xi2] = px;
+        grains32[yi2 * w2 + xi2] = px;
+        if (k2 % 3 === 0 && xi2 + 1 < w2 && yi2 + 1 < h2) {
+          grains32[yi2 * w2 + xi2 + 1] = px;
+          grains32[(yi2 + 1) * w2 + xi2] = px;
         }
       }
-      return this.out;
     }
   };
 
@@ -13301,6 +13332,16 @@
       this.patchCtx = this.patch.getContext("2d");
       this.dustLayer = makeCanvas(ROOM_W, rh2);
       this.dustCtx = this.dustLayer.getContext("2d");
+      this.cutImg = new ImageData(MASK_W, mh2);
+      this.cutSmall = makeCanvas(MASK_W, mh2);
+      this.personCut = makeCanvas(ROOM_W, rh2);
+      this.releaseLayer = makeCanvas(ROOM_W, rh2);
+      this.releaseCtx = this.releaseLayer.getContext("2d");
+      this.stencil = makeCanvas(ROOM_W, rh2);
+      this.stencilCtx = this.stencil.getContext("2d");
+      this.full = makeCanvas(w2, h2);
+      this.fullCtx = this.full.getContext("2d");
+      this.centroid = [MASK_W / 2, mh2 / 2];
       this.room = new EmptyRoom(ROOM_W, rh2);
       this.haveMask = false;
       this.loadSavedPhoto(w2, h2);
@@ -13426,6 +13467,23 @@
           safe[i2 * 4 + 3] = clearRun[i2] >= CLEAR_FRAMES ? 255 : 0;
         }
       }
+      const cut = this.cutImg.data;
+      let cx = 0, cy = 0, cn2 = 0;
+      for (let i2 = 0; i2 < w2 * h2; i2++) {
+        cut[i2 * 4 + 3] = coverage[i2];
+        if (coverage[i2] > 128) {
+          cx += i2 % w2;
+          cy += i2 / w2 | 0;
+          cn2++;
+        }
+      }
+      if (cn2 > 20) this.centroid = [cx / cn2, cy / cn2];
+      this.cutSmall.getContext("2d").putImageData(this.cutImg, 0, 0);
+      const pc2 = this.personCut.getContext("2d");
+      pc2.clearRect(0, 0, this.personCut.width, this.personCut.height);
+      pc2.filter = "blur(1.5px)";
+      pc2.drawImage(this.cutSmall, 0, 0, this.personCut.width, this.personCut.height);
+      pc2.filter = "none";
       this.maskSmall.getContext("2d").putImageData(this.maskImg, 0, 0);
       this.safeMask.getContext("2d").putImageData(this.safeImg, 0, 0);
       const s2 = this.softCtx;
@@ -13505,16 +13563,41 @@
       ctx.drawImage(source, 0, 0, this.frameW, this.frameH);
       if (this.state !== "present" && this.haveMask) {
         this.drawRoomOverPerson();
-        if (this.state === "dissolving" || this.state === "reforming") this.drawDust(now);
+        if (this.state === "dissolving" || this.state === "reforming") this.drawDust(source, now);
       }
       if (this.photoJob) this.drawCountdown(now);
     }
-    drawDust(now) {
+    drawDust(source, now) {
       const ctx = this.outCtx;
       const elapsed = (now - this.effectStart) / 1e3;
       const d2 = this.storm.duration;
-      const t2 = this.state === "dissolving" ? elapsed : d2 - elapsed;
-      this.dustCtx.putImageData(this.storm.paint(Math.max(0, Math.min(d2, t2))), 0, 0);
+      const t2 = Math.max(0, Math.min(d2, this.state === "dissolving" ? elapsed : d2 - elapsed));
+      const { width: rw, height: rh2 } = this.work;
+      const scale = rw / this.maskW;
+      this.storm.paint(t2, {
+        rgba: this.workCtx.getImageData(0, 0, rw, rh2).data,
+        cover: this.coverage,
+        gw: this.maskW,
+        gh: this.maskH,
+        dx: (this.centroid[0] - this.stormCentroid[0]) * scale,
+        dy: (this.centroid[1] - this.stormCentroid[1]) * scale
+      });
+      this.releaseCtx.putImageData(this.storm.release, 0, 0);
+      const st2 = this.stencilCtx;
+      st2.globalCompositeOperation = "copy";
+      st2.drawImage(this.personCut, 0, 0);
+      st2.globalCompositeOperation = "destination-in";
+      st2.drawImage(this.releaseLayer, 0, 0);
+      st2.globalCompositeOperation = "source-over";
+      const f2 = this.fullCtx;
+      f2.globalCompositeOperation = "copy";
+      f2.imageSmoothingEnabled = true;
+      f2.drawImage(this.stencil, 0, 0, this.frameW, this.frameH);
+      f2.globalCompositeOperation = "source-in";
+      f2.drawImage(source, 0, 0, this.frameW, this.frameH);
+      f2.globalCompositeOperation = "source-over";
+      ctx.drawImage(this.full, 0, 0);
+      this.dustCtx.putImageData(this.storm.grains, 0, 0);
       ctx.imageSmoothingEnabled = true;
       ctx.drawImage(this.dustLayer, 0, 0, this.frameW, this.frameH);
       if (elapsed >= d2) {
@@ -13545,6 +13628,7 @@
       const rgba = actx.getImageData(0, 0, w2, h2).data;
       const alpha = new Uint8ClampedArray(w2 * h2);
       for (let i2 = 0; i2 < alpha.length; i2++) alpha[i2] = rgba[i2 * 4 + 3];
+      this.stormCentroid = [...this.centroid];
       return new DustStorm(pixels, alpha, {
         seconds: Number(this.prefs.dustSeconds) || 3,
         direction: this.prefs.direction
