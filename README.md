@@ -1,106 +1,199 @@
 # Thanos Snap Vanish for Meetings
 
-A Chrome extension for Google Meet. Snap your fingers on camera and you turn to dust like Thanos. The other people in the call see an empty room where you were sitting, and your mic mutes. Snap again and you come back.
+**Snap your fingers in a Google Meet call and turn to dust, like Thanos. Snap again to come back.**
 
-Everything runs on your own computer. Your video isn't sent anywhere.
+While you're gone, everyone else sees an empty room where you were sitting, and your mic is muted. It's a free Chrome extension, and it all runs on your own computer. Your video is never sent anywhere.
+
+**Quick start:** install it → capture your empty room → snap.
+
+---
+
+## Contents
+
+- [Features](#features)
+- [What it works with](#what-it-works-with)
+- [Install](#install)
+- [How to use it](#how-to-use-it)
+- [Settings](#settings)
+- [Troubleshooting](#troubleshooting)
+- [How it works](#how-it-works)
+- [Privacy](#privacy)
+
+---
 
 ## Features
 
-- Detects a real finger snap by listening for the snap's click and checking that your hand is up in snap position on camera. Typing, talking, claps with your hands down and other normal noises won't set it off.
-- The popup shows live checks ("Ready to snap", "Snap heard") so you can see what it's picking up while you practice.
-- You break apart into dust that blows away, and the dust flies back when you return.
-- Shows an actual empty room where you were, not a blurry outline. You can take a quick photo of your empty room for a perfect result, or skip that and let AI fill in the background behind you.
-- Your mic mutes when you disappear and unmutes when you come back.
-- If you don't want to snap, there's a "Snap now" button and a keyboard shortcut (Alt+Shift+S).
-- You can change the snap sensitivity, how long the dust takes, and which way it blows.
+- **Real snap detection.** It listens for the snap and checks your hand is in snap position, so typing and talking won't set it off.
+- **Dust effect.** You break apart and blow away. Snap again and the dust flies back.
+- **Empty room.** People see a real, sharp picture of your room, not a blurry outline.
+- **Auto-mute.** Your mic turns off while you're gone and back on when you return.
+- **Backup buttons.** Don't want to snap? Use the **Snap now** button or press **Alt+Shift+S**.
+- **Your choice of style.** Change how sensitive the snap is, how long the dust takes, and which way it blows.
+- **Private.** No accounts, no tracking, no uploads.
+
+---
 
 ## What it works with
 
-Right now it only supports **Google Meet** in **Google Chrome** (version 116 or newer).
+| Where | Status |
+|---|---|
+| ✅ **Google Meet** in Google Chrome (116 or newer) | Supported |
+| 🚧 Teams and Zoom (web versions) | Not yet. Coming later |
+| ❌ Meet, Teams or Zoom desktop apps | Can't work. Extensions only run in the browser |
+| 🤷 Edge, Brave, Arc | Should work, but not tested |
+| ❌ Safari, Firefox | Not supported |
 
-- Teams and Zoom on the web aren't supported yet. There's some early code for them, but it hasn't been tested.
-- The desktop apps for Meet, Teams and Zoom can't work with it, because browser extensions only run inside the browser.
-- Edge, Brave and Arc are built on the same engine as Chrome and should work, but I haven't tested them. Safari and Firefox won't work.
-- You need a webcam. A microphone is recommended for the snap sound check.
-- It runs on Windows, Mac, Linux and Chromebooks. Most laptops from the last few years are fast enough.
+You'll need a **webcam** and a **microphone** (the mic hears your snap). Any recent Windows, Mac, Linux or Chromebook laptop is fine.
 
-## Installing it
+---
 
-1. Click the green **Code** button on this page, choose **Download ZIP**, and unzip it. (You can also download `snap-vanish-meetings.zip` from **Releases** on the right.)
-2. In Chrome, go to `chrome://extensions`.
-3. Turn on **Developer mode** in the top right corner.
-4. Click **Load unpacked** and select the `extension` folder inside the folder you unzipped. If you used the Releases zip, select the unzipped folder itself. Either way, it's the folder that has `manifest.json` in it.
-5. Click the puzzle piece icon in Chrome's toolbar and pin **Snap Vanish** so it's easy to find.
+## Install
 
-To update it later, replace the folder with the new version and click the reload button on the extension in `chrome://extensions`.
+It takes about a minute, and you don't need to know how to code.
 
-## Using it
+1. **Download it.** Click the green **Code** button at the top of this page → **Download ZIP**. Unzip the file.
+2. **Open Chrome's extensions page.** Type `chrome://extensions` in the address bar and press Enter.
+3. **Turn on Developer mode.** It's the switch in the top right corner.
+4. **Load it.** Click **Load unpacked** and choose the **`extension`** folder inside the folder you unzipped.
+5. **Pin it.** Click the 🧩 puzzle icon in Chrome's toolbar, then the 📌 pin next to **Snap Vanish**.
 
-1. Open the extension and make sure the switch at the top is on.
-2. Join your Google Meet call. If the Meet tab was already open before you installed the extension, refresh it.
-3. Capture your empty room. You have two options:
-   - **Best: capture your empty room.** At the top of the popup, click **Capture empty room**, then step out of the camera's view. After a 5 second countdown it saves a picture of your empty room, and that's what people see when you vanish. It's easiest to do this on Meet's "Ready to join?" screen before you enter the call, because the countdown shows on your video. You only need to do it once per room. Retake it if you move your camera or the lighting changes.
-   - **No setup: AI fill.** Skip the capture, sit in front of the camera for 5 to 10 seconds and lean left and right a bit. It learns the room behind you as you move, and AI fills in the spots it never saw. This is quicker but not as clean, so you may see some smudges where you were sitting.
-4. Hold your hand up in front of the camera, around face height, so the camera can see all of it. Put your thumb and middle finger together and fold your ring and pinky fingers in. The popup should say **✋ Ready to snap**.
-5. Snap. You need an actual audible snap: the popup flashes **🔊 Snap heard** when the mic catches it.
-6. Snap again to come back.
+> **Tip:** If you downloaded `snap-vanish-meetings.zip` from **Releases** instead, choose the unzipped folder itself in step 4. The right folder is always the one with `manifest.json` inside.
 
-If your snap isn't picked up, open the popup while you try and watch the two checks:
+**Updating later:** swap in the new folder, then click the ↻ reload button on Snap Vanish in `chrome://extensions`.
 
-- **"✋ Hand seen" but never "Ready to snap":** bring your hand closer or higher, and press your thumb and middle finger together firmly before snapping. Raising the sensitivity makes this looser.
-- **"🔊 Snap heard" doesn't light up:** snap louder or closer to your laptop, or raise the sensitivity. If it says "Mic not available", allow microphone access for Meet.
-- **Both light up but nothing happens:** make sure you're on the camera in Meet, not a different tab, and that the popup isn't still loading.
+---
 
-You can turn off **Confirm with snap sound** to rely on the camera alone, but that only works if the camera catches the flick itself, which is much less reliable. The "Snap now" button and Alt+Shift+S always work. To change the shortcut, go to `chrome://extensions/shortcuts`.
+## How to use it
 
-### Settings
+### 1. Join your call
 
-<img src="docs/popup.png" alt="The Snap Vanish popup" width="260" align="right">
+Open Google Meet. If the Meet tab was already open before you installed the extension, **refresh it** first.
 
-- **On/off switch:** turns the extension on or off. After you change it, turn your camera off and on in Meet (or refresh) for it to apply.
-- **Snap now:** disappear or come back right away.
-- **Snap sensitivity:** lower means fewer accidental triggers, higher catches softer snaps.
-- **Dust duration:** how long the dust effect takes, from 1 to 6 seconds.
-- **Dust direction:** left, up, right or random. This is the direction other people see. Your own preview in Meet is mirrored, so "right" will look like left to you.
-- **Confirm with snap sound:** listens for the snap's click on the mic (recommended). With it off, the camera has to catch the flick on its own, which misses a lot of snaps.
-- **Mute mic while vanished:** mutes you while you're gone.
-- **Empty room:** capture a photo of your empty room, see a preview of it, and retake or remove it. The label shows "Photo ✓" when it's using your photo, or "AI fill" when it isn't.
+### 2. Capture your empty room (do this once)
+
+This is what people will see when you vanish, so it's worth doing.
+
+1. On Meet's **"Ready to join?"** screen, click the Snap Vanish icon.
+2. Click **Capture empty room** at the top.
+3. **Step out of the camera's view** until the 5 second countdown ends. You'll see the countdown on your video.
+4. A preview of your room appears in the popup. Done!
+
+You only need to redo this if you move your camera or the lighting changes. Click **Retake** to update it.
+
+> **Skipped this step?** It still works. AI fills in the room behind you instead, but it won't look as clean, so you might see smudges where you were sitting.
+
+### 3. Snap to vanish
+
+1. Raise your hand to about **face height** so the camera can see all of it.
+2. Press your **thumb and middle finger together** and fold your other fingers in.
+3. **Snap!** It needs to be an actual snap the mic can hear.
+
+You turn to dust and your mic mutes.
+
+### 4. Snap to come back
+
+Snap the same way again. The dust flies back and you reappear, and your mic turns back on.
+
+> **Practicing?** Keep the popup open while you snap. It shows two live checks:
+> **✋ Ready to snap** (the camera sees your hand in position) and **🔊 Snap heard** (the mic caught it). If one doesn't light up, see [Troubleshooting](#troubleshooting).
+
+---
+
+## Settings
+
+<img src="docs/popup.png" alt="The Snap Vanish popup" width="250" align="right">
+
+| Setting | What it does |
+|---|---|
+| **On/off switch** | Turns the extension on or off. Turn your camera off and on in Meet afterwards. |
+| **Empty room** | Capture, retake or remove your room photo. Shows **Photo ✓** or **AI fill**. |
+| **Snap now** | Vanish or come back instantly, no snap needed. |
+| **Snap sensitivity** | Lower = fewer accidents. Higher = catches softer snaps. |
+| **Dust duration** | How long the dust takes: 1 to 6 seconds. |
+| **Dust direction** | Left, up, right or random. This is how *others* see it. Your own preview is mirrored, so "right" looks like left to you. |
+| **Confirm with snap sound** | Uses the mic to hear your snap. Keep this on, because without it most snaps get missed. |
+| **Mute mic while vanished** | Mutes you while you're gone. |
 
 <br clear="right">
 
-### Tips
+**Change the keyboard shortcut** at `chrome://extensions/shortcuts`.
 
-- Even lighting works best. A bright window behind you makes the empty room harder to fake.
-- The empty room is a still picture, so if someone walks behind your chair while you're gone, they won't show up.
-- With a room photo, take it in the same lighting you'll have during the call.
+### Tips for the best effect
+
+- 💡 Steady, even lighting works best. A bright window behind you makes it harder.
+- 📸 Capture your room in the same lighting you'll have during the call.
+- 🚶 Your empty room is a still photo, so anyone walking behind you while you're gone won't show up.
+
+---
+
+## Troubleshooting
+
+**My snap isn't working.** Open the popup and watch the two checks while you snap:
+
+| What you see | What to try |
+|---|---|
+| ✋ **Hand seen**, never **Ready to snap** | Raise your hand higher or closer. Press your thumb and middle finger firmly together before snapping. |
+| 🔊 **Snap heard** never lights up | Snap louder or closer to your laptop, or raise the sensitivity. |
+| 🎤 **Mic not available** | Allow microphone access for Meet in Chrome. |
+| Both light up, nothing happens | Make sure the popup has finished loading and you're in the Meet tab. |
+
+You can always use **Snap now** or **Alt+Shift+S** instead.
+
+**I can still see a faded or blurry me.** Click **Capture empty room** in the popup. A real photo of your room fixes this.
+
+**It says "No meeting camera in this tab yet."** Refresh the Meet tab and turn your camera on.
+
+**It's stuck on "Loading".** Give it 5 to 10 seconds after your camera turns on. Older computers take a little longer.
+
+**It goes off by accident.** Lower the sensitivity, and keep **Confirm with snap sound** on.
+
+**Meet still shows my mic as on while I'm gone.** That's normal. Your sound is cut off before it reaches Meet, so nobody can hear you. Meet's own mic icon just doesn't change.
+
+**The shortcut doesn't work.** Another app might be using Alt+Shift+S. Pick a new one at `chrome://extensions/shortcuts`.
+
+**Nothing happens at all.** Check the switch in the popup is on, then turn your camera off and on in Meet.
+
+---
 
 ## How it works
 
-Normally Google Meet reads your webcam directly. This extension sits in between. It takes your camera feed, changes each frame, and passes the changed video on to Meet. Meet just sends whatever it gets, so everyone in the call sees the edited version.
+**It sits between your camera and Meet.**
+Normally Meet reads your webcam directly. This extension takes your camera feed first, edits each frame, and hands the edited video to Meet. Meet just sends what it's given, so everyone sees the edited version.
 
-To catch a snap, it uses two things together. A hand tracking model from Google (MediaPipe) finds the points on your fingers about 30 times a second and notices when your hand is up with your thumb and middle finger pressed together, ready to snap. At the same time it listens to the microphone for the snap's sound: a very short, sharp click that's mostly high-pitched and fades within a few hundredths of a second. Speech, music and a fan humming don't look like that. If it hears that click while your hand was in snap position, it counts as a snap.
+**It catches your snap with the camera and the mic.**
+A hand tracking model from Google finds the points on your fingers about 30 times a second. It notices when your hand is up with your thumb and middle finger together. At the same moment, the mic listens for the snap's sound: a short, sharp, high-pitched click. If it hears that click while your hand is in position, that's a snap.
 
-The sound is what catches the exact moment, because the finger flick is faster than a single webcam frame. The hand check is what stops random noises from triggering it. Meet filters out clicks like this from your mic to reduce background noise, so the extension opens its own copy of the microphone with that filtering turned off. It only checks the sound for clicks and never records or sends it anywhere.
+Why both? A snap is faster than one webcam frame, so the camera alone often misses it. The sound catches the exact moment, and the hand check stops random noises like a clap or a cough from triggering it.
 
-To make you disappear, a second model works out which part of the picture is you and which part is the room. If you took a room photo, it simply shows that photo while you're gone. If not, it builds its own picture of the room while you're on camera, adding to it whenever you move and uncover more of the wall behind you. It only adds spots that have been clearly empty for a moment, so a fast-moving arm doesn't get baked in. The spots it has never seen, like the chair right behind you, get filled in by a third model called MI-GAN. It works like the "remove object" tool in a photo editor.
+Meet normally filters clicks out of your mic to cut background noise, so the extension listens on its own copy of the mic with that filter off. It only listens for clicks. Nothing is recorded or sent anywhere.
 
-When you snap, each part of you turns into specks of dust that fall off in patches, turn grey, and drift away, with the empty room showing behind them. The part of you that hasn't turned to dust yet is always your live camera, so you keep moving naturally while you dissolve. Coming back plays the same animation in reverse: the dust flies back to wherever you are now, and you reassemble as you look at that moment, not frozen in the pose you snapped in. Your mic is switched off while you're gone and back on when you return.
+**It knows which part of the picture is you.**
+A second model works out which pixels are you and which are the room, like an automatic cut-out tool.
 
-All three models are included in the extension, so nothing gets downloaded during a call and nothing gets uploaded.
+**It shows the empty room.**
+If you captured your room, it simply shows that photo. If not, it learns the room behind you as you move around, and a third AI model called MI-GAN fills in the spots it has never seen, like the "remove object" tool in a photo editor.
 
-### For developers
+**It turns you into dust.**
+When you snap, pieces of you break off in patches, turn grey and drift away, showing the room behind. The part of you that hasn't turned to dust yet is still your live camera, so you keep moving naturally. Coming back plays the same thing in reverse, and the dust flies back to wherever you are right now.
+
+All three AI models are packed inside the extension. Nothing is downloaded during a call, and nothing is uploaded.
+
+<details>
+<summary><b>For developers</b></summary>
+
+<br>
 
 | Part | What it uses |
 |---|---|
 | Hand tracking | MediaPipe Hand Landmarker (WebGL, falls back to CPU) |
 | Cutting you out | MediaPipe Selfie Segmenter |
 | Filling the room | MI-GAN (ONNX) on ONNX Runtime Web, in an offscreen extension page |
-| Snap sound | High-pass transient detector (fast attack, under 70 ms decay) on a separate mic stream with noise suppression, echo cancellation and auto gain turned off |
+| Snap sound | High-pass transient detector (fast attack, under 70 ms decay) on a separate mic stream with noise suppression, echo cancellation and auto gain off |
 | Camera swap | A `getUserMedia` hook feeding a canvas, sent to Meet with `canvas.captureStream()` |
-| Dust | A particle system drawn straight into pixel buffers, written so it can run backwards |
+| Dust | Particle system written straight into pixel buffers; untouched parts drawn from the live camera through a release stencil |
 | Packaging | Chrome Manifest V3, bundled with esbuild |
 
-Project layout:
+**Project layout**
 
 ```
 extension/        the folder you load in Chrome
@@ -117,7 +210,9 @@ tools/            icon generator and zip script
 build.mjs         build script
 ```
 
-The `extension` folder already has everything built. If you change the code, you'll need [Node.js](https://nodejs.org) 18 or newer:
+**Building from source**
+
+The `extension` folder is already built. If you change the code, you'll need [Node.js](https://nodejs.org) 18 or newer:
 
 ```bash
 npm install
@@ -126,46 +221,37 @@ npm test           # runs the snap detection tests
 npm run package    # makes snap-vanish-meetings.zip
 ```
 
-## Troubleshooting
+</details>
 
-**The popup says "No meeting camera in this tab yet."** Refresh the Meet tab and turn your camera on.
-
-**It's stuck on "Loading".** Give it 5 to 10 seconds after your camera turns on. Older computers take a bit longer the first time.
-
-**My snap isn't detected.** See the "If your snap isn't picked up" steps above. The two checks in the popup tell you whether the camera or the mic is the problem.
-
-**It goes off when I don't want it to.** Lower the sensitivity and keep "Confirm with snap sound" on.
-
-**I can still see a faded or blurry version of myself.** Click **Capture empty room** in the popup. That replaces the AI fill with a real picture of your empty room. Without a photo, lean around for a few seconds before snapping so it can see more of the room.
-
-**Meet still shows my mic as on while I'm gone.** That's expected. The extension silences your audio before it reaches Meet, so nobody hears you, but Meet's mic icon doesn't change.
-
-**The keyboard shortcut doesn't work.** Another app might be using it. Pick a different one at `chrome://extensions/shortcuts`.
-
-**My camera looks normal and nothing happens.** Check that the extension is switched on, then turn your camera off and on again in Meet.
+---
 
 ## Privacy
 
-Your video, audio and images never leave your computer. There are no accounts, no analytics and no tracking, and the extension doesn't make any network requests. The only things it saves are your settings and, if you take one, your room photo. Both stay in Chrome's storage on your computer, and you can delete the photo from the popup.
+- 🔒 Your video, audio and images **never leave your computer**.
+- 🚫 No accounts, no analytics, no tracking. The extension makes no network requests.
+- 💾 It only saves your settings and your room photo, both in Chrome on your computer. You can remove the photo any time from the popup.
+- 🌐 It only runs on meeting sites (`meet.google.com`, plus the Teams and Zoom web addresses for future support). It can't see any other site.
 
-It only runs on meeting sites: `meet.google.com`, plus the Teams and Zoom web addresses for the early support mentioned above. It can't see any other site you visit.
+---
 
 ## Known limitations
 
-- Only Google Meet is supported for now.
-- Meet's own mute icon doesn't change while you're vanished, even though your audio is off.
-- If the Meet tab was open before you installed the extension, you have to refresh it.
-- On slower computers, the video can get a little choppy while the effect is running.
+- Only Google Meet for now.
+- Meet's mic icon doesn't show as muted while you're gone, even though your sound is off.
+- If Meet was open before you installed the extension, you need to refresh it.
+- On slower computers, the video can get a bit choppy during the dust effect.
 
-## Plans
+## Coming later
 
-- Support for Teams and Zoom on the web
-- Show Meet's mute icon as muted while you're gone
+- Teams and Zoom on the web
+- Meet's mute icon showing as muted while you're gone
 - More effects
-- Publish it on the Chrome Web Store
+- Chrome Web Store release
+
+---
 
 ## Credits and license
 
-MIT license, see [LICENSE](LICENSE). It includes open source models and libraries from Google MediaPipe (Apache 2.0), Microsoft ONNX Runtime (MIT) and Picsart's MI-GAN (MIT). Details are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+MIT license, see [LICENSE](LICENSE). Uses open source models and libraries from Google MediaPipe (Apache 2.0), Microsoft ONNX Runtime (MIT) and Picsart's MI-GAN (MIT). Details are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-This is a fan project made for fun. It isn't connected to Marvel, Disney, Google, Microsoft or Zoom. Thanos is a trademark of Marvel.
+A fan project made for fun. Not connected to Marvel, Disney, Google, Microsoft or Zoom. Thanos is a trademark of Marvel.
